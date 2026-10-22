@@ -75,6 +75,34 @@
     else unlock();
   });
 
+  // "Tap to start": browsers won't play sound before a tap, so the first tap is asked for up
+  // front and the music is already playing on the title screen. The overlay takes that tap, so
+  // it never presses a button in the game (the game only listens on its canvas).
+  document.addEventListener('DOMContentLoaded', function () {
+    var css = document.createElement('style');
+    css.textContent =
+      "@font-face{font-family:EpicPixel;src:url(epic-pixel.ttf)}" +
+      "#tap{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;" +
+      "background:#07060f;font-family:EpicPixel,monospace;color:#fff;cursor:pointer;transition:opacity .3s}" +
+      "#tap img{width:96px;height:96px;image-rendering:pixelated;border-radius:22px}" +
+      "#tap b{font-weight:normal;font-size:24px;letter-spacing:2px;animation:tapblink 1.2s steps(1) infinite}" +
+      "#tap small{font-size:12px;color:#7fd4ff;letter-spacing:1px}" +
+      "@keyframes tapblink{50%{opacity:.25}}";
+    document.head.appendChild(css);
+    var tap = document.createElement('div');
+    tap.id = 'tap';
+    tap.innerHTML = '<img src="icon.png" alt=""><b>TAP TO START</b><small>PLAYTEST</small>';
+    tap.addEventListener('click', function () {
+      unlock();
+      tap.style.opacity = '0';
+      tap.style.pointerEvents = 'none';
+      setTimeout(function () {
+        tap.remove();
+      }, 300);
+    });
+    document.body.appendChild(tap);
+  });
+
   window.ReactNativeWebView = {
     postMessage: function (raw) {
       var msg;
