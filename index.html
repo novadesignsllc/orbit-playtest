@@ -1,6 +1,110 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>// Stands in for the Expo app's native side (mobile/App.tsx) so the game runs unchanged in a
+// browser: the game sees window.ReactNativeWebView and posts to it like in the app. Saves go to
+// localStorage (loadSave reads it), music plays the app's tracks with the same volume and
+// crossfades, haptics become vibrations.
+(function () {
+  var SAVE_KEY = 'voidwing-save-v1';
+  var MUSIC_VOLUME = 0.55;
+  var hidden = false;
+
+  // Play even with the ringer switch off, like the app (playsInSilentMode). Safari 16.4+.
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch (e) {}
+
+  // Volume goes through Web Audio: iOS ignores <audio>.volume.
+  var ctx = null;
+  var current = null; // { el, gain }
+  var want = null;
+  function context() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) ctx = new AC();
+    }
+    return ctx;
+  }
+  function fade(gain, to, ms) {
+    var t = ctx.currentTime;
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(gain.gain.value, t);
+    gain.gain.linearRampToValueAtTime(to, t + ms / 1000);
+  }
+  function setTrack(track) {
+    if (track === want) return;
+    want = track;
+    var c = context();
+    var old = current;
+    current = null;
+    if (old) {
+      if (c) fade(old.gain, 0, 500);
+      setTimeout(function () {
+        old.el.pause();
+        old.el.removeAttribute('src');
+      }, 550);
+    }
+    if (!track || !c) return;
+    var el = new Audio('music/' + track + '.m4a');
+    el.loop = true;
+    el.preload = 'auto';
+    var gain = c.createGain();
+    gain.gain.value = 0;
+    c.createMediaElementSource(el).connect(gain);
+    gain.connect(c.destination);
+    current = { el: el, gain: gain };
+    fade(gain, MUSIC_VOLUME, 700);
+    if (!hidden) el.play().catch(function () {});
+  }
+
+  // Browsers only start audio after a tap.
+  function unlock() {
+    var c = context();
+    if (c && c.state !== 'running') c.resume().catch(function () {});
+    if (current && current.el.paused && !hidden) current.el.play().catch(function () {});
+  }
+  ['pointerdown', 'touchend', 'keydown'].forEach(function (t) {
+    window.addEventListener(t, unlock, true);
+  });
+  // Paused in the background, like the app.
+  document.addEventListener('visibilitychange', function () {
+    hidden = document.hidden;
+    if (!current) return;
+    if (hidden) current.el.pause();
+    else unlock();
+  });
+
+  window.ReactNativeWebView = {
+    postMessage: function (raw) {
+      var msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch (e) {
+        return;
+      }
+      switch (msg.type) {
+        case 'save':
+          try {
+            localStorage.setItem(SAVE_KEY, msg.json);
+          } catch (e) {}
+          break;
+        case 'music':
+          setTrack(msg.track || null);
+          break;
+        case 'haptic':
+          if (navigator.vibrate) navigator.vibrate(msg.kind === 'heavy' || msg.kind === 'error' ? 60 : 15);
+          break;
+        case 'buy':
+        case 'restore':
+          // the full game is already unlocked in the playtest
+          if (window.__orbitStore) window.__orbitStore({ result: true });
+          break;
+      }
+    },
+  };
+})();
+</script>
     <script>window.__ORBIT_CLOUD_SAVE__ = '{"full":true}';</script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
